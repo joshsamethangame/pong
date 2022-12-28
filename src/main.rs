@@ -67,6 +67,10 @@ const BASE_SPEED: f32 = 500.;
 
 const BALL_RESPAWN_DELAY: u64 = 2;
 
+const FONT_NAME: &str = "MajorMonoDisplay-Regular.ttf";
+
+const TEXT_SIZE: f32 = 60.;
+
 // endregion: --- Constants
 
 // region:    --- Resources
@@ -147,6 +151,7 @@ fn main() {
 
 fn startup_system(
     mut commands: Commands,
+    asset_server: Res<AssetServer>,
     mut windows: ResMut<Windows>,
 ) {
     // spawn camera
@@ -228,26 +233,24 @@ fn startup_system(
     // spawn score text
     commands
         .spawn((
-            TextBundle::from_sections([
-                TextSection::from_style(TextStyle {
-                    font_size: 60.0,
+            TextBundle::from_section(
+                "0 0",
+                TextStyle {
+                    font: asset_server.load(FONT_NAME),
+                    font_size: TEXT_SIZE,
                     color: Color::WHITE,
-                    font: Default::default(),
-                }),
-                TextSection::new(
-                    "   ",
-                    TextStyle {
-                        font_size: 60.0,
-                        color: Color::WHITE,
-                        font: Default::default(),
-                    },
-                ),
-                TextSection::from_style(TextStyle {
-                    font_size: 60.0,
-                    color: Color::WHITE,
-                    font: Default::default(),
-                }),
-            ]),
+                },
+            )
+            .with_text_alignment(TextAlignment::TOP_CENTER)
+            .with_style(Style {
+                position_type: PositionType::Absolute,
+                position: UiRect {
+                    top: Val::Px(5.0),
+                    left: Val::Px(win_size.w / 2. - TEXT_SIZE),
+                    ..default()
+                },
+                ..default()
+            }),
             ScoreText,
         ));
 
@@ -415,8 +418,7 @@ fn text_update_system(
     score: Res<Score>,
     mut query: Query<&mut Text, With<ScoreText>>,
 ) {
-    for mut text in query.iter_mut() {
-        text.sections[0].value = format!("{}", score.p1);
-        text.sections[2].value = format!("{}", score.p2);
+    if let Ok(mut text) = query.get_single_mut() {
+        text.sections[0].value = format!("{} {}", score.p1, score.p2);
     }
 }
