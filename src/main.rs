@@ -50,6 +50,9 @@ struct BallStartTimer {
     timer: Timer,
 }
 
+#[derive(Component)]
+struct ScoreText;
+
 // endregion: --- Components
 
 // region:    --- Constants
@@ -100,6 +103,15 @@ struct Score {
 
 // endregion: --- Resources
 
+// region:    --- Labels
+
+#[derive(SystemLabel)]
+enum SysLabel {
+    Collision,
+}
+
+// endregion: --- Labels
+
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
@@ -113,22 +125,29 @@ fn main() {
         }))
         .add_plugin(ShapePlugin)
         .add_startup_system(startup_system)
-        .add_system(movable_system)
+        .add_system(
+            movable_system
+                .after(SysLabel::Collision)
+        )
         .add_system(player_keyboard_event_system)
         .add_system(ball_track_player_system)
-        .add_system(ball_wall_collision_system) // maybe needs to run after movable system
+        .add_system(
+            ball_wall_collision_system
+                .label(SysLabel::Collision)
+        )
         .add_system(start_ball_system)
         .add_system(score_system)
         .add_system(
             ball_player_collision_system
-                .before(movable_system)
+                .label(SysLabel::Collision)
         )
+        .add_system(text_update_system)
         .run();
 }
 
 fn startup_system(
     mut commands: Commands,
-    mut windows: ResMut<Windows>
+    mut windows: ResMut<Windows>,
 ) {
     // spawn camera
     commands.spawn(Camera2dBundle::default());
@@ -152,7 +171,7 @@ fn startup_system(
         Transform {
             translation: Vec3::new(0., 0., 0.),
             ..Default::default()
-        }
+        },
     ));
 
     // spawn players
@@ -171,7 +190,7 @@ fn startup_system(
             Transform {
                 translation: Vec3::new(left, 0., 10.),
                 ..Default::default()
-            }
+            },
         ))
         .insert((Player { option: PlayerOption::P1 }, Movable, Velocity { x: 0., y: 0. }));
     commands
@@ -181,10 +200,11 @@ fn startup_system(
             Transform {
                 translation: Vec3::new(right, 0., 10.),
                 ..Default::default()
-            }
+            },
         ))
         .insert((Player { option: PlayerOption::P2 }, Movable, Velocity { x: 0., y: 0. }));
 
+    // spawn ball
     let ball_shape = shapes::Rectangle {
         extents: Ball::size(),
         origin: RectangleOrigin::Center,
@@ -197,13 +217,39 @@ fn startup_system(
             Transform {
                 translation: Vec3::new(0., 0., 10.),
                 ..Default::default()
-            }
+            },
         ))
         .insert((Ball, TrackingPlayer { player: PlayerOption::P1 }, Velocity { x: 0., y: 0. }));
     commands
         .spawn(BallStartTimer {
             timer: Timer::new(Duration::from_secs(BALL_RESPAWN_DELAY), TimerMode::Once)
-    });
+        });
+
+    // spawn score text
+    commands
+        .spawn((
+            TextBundle::from_sections([
+                TextSection::from_style(TextStyle {
+                    font_size: 60.0,
+                    color: Color::WHITE,
+                    font: Default::default(),
+                }),
+                TextSection::new(
+                    "   ",
+                    TextStyle {
+                        font_size: 60.0,
+                        color: Color::WHITE,
+                        font: Default::default(),
+                    },
+                ),
+                TextSection::from_style(TextStyle {
+                    font_size: 60.0,
+                    color: Color::WHITE,
+                    font: Default::default(),
+                }),
+            ]),
+            ScoreText,
+        ));
 
     // insert resources
     commands.insert_resource(win_size);
@@ -280,10 +326,8 @@ fn ball_wall_collision_system(
     if let Ok((_, mut transform, mut velocity)) = ball_query.get_single_mut() {
         let translation = &mut transform.translation;
         if translation.y + BALL_SIZE / 2. > win_size.screen_top()
-            || translation.y - BALL_SIZE < win_size.screen_bottom() {
+            || translation.y - BALL_SIZE / 2. < win_size.screen_bottom() {
             velocity.y = -velocity.y;
-            translation.y = translation.y.min(win_size.screen_top() - BALL_SIZE / 2.);
-            translation.y = translation.y.max(win_size.screen_bottom() + BALL_SIZE / 2.);
         }
     }
 }
@@ -360,9 +404,19 @@ fn ball_player_collision_system(
                 ball_velocity.x *= -1.;
                 ball_velocity.y = (ball_transform.translation.y - player_transform.translation.y) / ((BALL_SIZE + PADDLE_HEIGHT) / 2.);
 
-                ball_transform.translation.x = ball_transform.translation.x.max(win_size.screen_left());
-                ball_transform.translation.x = ball_transform.translation.x.min(win_size.screen_right());
+                ball_transform.translation.x = ball_transform.translation.x.max(win_size.screen_left() + PADDLE_WIDTH + BALL_SIZE / 2.);
+                ball_transform.translation.x = ball_transform.translation.x.min(win_size.screen_right() - PADDLE_WIDTH - BALL_SIZE / 2.);
             }
         }
+    }
+}
+
+fn text_update_system(
+    score: Res<Score>,
+    mut query: Query<&mut Text, With<ScoreText>>,
+) {
+    for mut text in query.iter_mut() {
+        text.sections[0].value = format!("{}", score.p1);
+        text.sections[2].value = format!("{}", score.p2);
     }
 }
