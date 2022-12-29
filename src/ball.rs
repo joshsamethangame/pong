@@ -2,7 +2,7 @@ use std::time::Duration;
 use bevy::prelude::*;
 use bevy::sprite::collide_aabb::collide;
 use bevy_prototype_lyon::prelude::*;
-use crate::{Movable, Score, SysLabel, Velocity, WinSize};
+use crate::{Movable, movement_system, Score, Velocity, WinSize};
 use crate::player::{Player, PLAYER_HEIGHT, PLAYER_WIDTH, Players};
 
 pub struct BallPlugin;
@@ -12,10 +12,21 @@ impl Plugin for BallPlugin {
         app.
             add_startup_system(startup_system)
             .add_system(ball_track_player_system)
-            .add_system(ball_wall_collision_system.label(SysLabel::Collision))
-            .add_system(start_ball_system)
-            .add_system(score_system.before(ball_player_collision_system))
-            .add_system(ball_player_collision_system.label(SysLabel::Collision));
+            .add_system(
+                ball_wall_collision_system
+                    .before(movement_system)
+            )
+            .add_system(
+                start_ball_system
+                    .before(score_system)
+            )
+            .add_system(
+                score_system
+                    .before(ball_player_collision_system)
+            )
+            .add_system(ball_player_collision_system
+                .before(ball_wall_collision_system)
+            );
     }
 }
 
@@ -36,12 +47,12 @@ impl Ball {
 }
 
 #[derive(Component)]
-struct TrackingPlayer {
+pub struct TrackingPlayer {
     player: Players,
 }
 
 #[derive(Component)]
-struct BallStartTimer {
+pub struct BallStartTimer {
     timer: Timer,
 }
 
@@ -102,7 +113,7 @@ fn ball_wall_collision_system(
     }
 }
 
-fn start_ball_system(
+pub fn start_ball_system(
     mut commands: Commands,
     time: Res<Time>,
     mut timer_query: Query<(Entity, &mut BallStartTimer)>,

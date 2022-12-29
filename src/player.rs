@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 use bevy_prototype_lyon::prelude::*;
-use crate::{Bounded, Movable, SysLabel, Velocity, WinSize};
+use crate::{Bounded, Movable, Velocity, WinSize};
+use crate::ball::start_ball_system;
 
 pub struct PlayerPlugin;
 
@@ -8,7 +9,10 @@ impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
         app
             .add_startup_system(startup_system)
-            .add_system(player_keyboard_event_system.before(SysLabel::Collision));
+            .add_system(
+                player_keyboard_event_system
+                    .before(start_ball_system)
+            );
     }
 }
 

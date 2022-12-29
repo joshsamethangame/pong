@@ -9,7 +9,7 @@ mod ball;
 // region:    --- Components
 
 #[derive(Component)]
-struct Velocity {
+pub struct Velocity {
     x: f32,
     y: f32,
 }
@@ -74,17 +74,6 @@ struct Score {
 
 // endregion: --- Resources
 
-// region:    --- Labels
-
-#[derive(SystemLabel)]
-enum SysLabel {
-    Input,
-    Movement,
-    Collision,
-}
-
-// endregion: --- Labels
-
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
@@ -97,15 +86,15 @@ fn main() {
             ..Default::default()
         }))
         .add_plugin(ShapePlugin)
-        .add_startup_system(startup_system)
-        .add_system(movement_system.after(SysLabel::Collision))
-        .add_system(text_update_system)
         .add_plugin(PlayerPlugin)
         .add_plugin(BallPlugin)
+        .add_startup_system(main_startup_system)
+        .add_system(movement_system)
+        .add_system(text_update_system)
         .run();
 }
 
-fn startup_system(
+fn main_startup_system(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut windows: ResMut<Windows>,
