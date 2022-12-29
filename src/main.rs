@@ -239,7 +239,10 @@ fn startup_system(
                 ..Default::default()
             },
         ))
-        .insert((Ball, TrackingPlayer { player: Players::P1 }, Velocity { x: 0., y: 0. }));
+        .insert(Ball)
+        .insert(TrackingPlayer { player: Players::P1 })
+        .insert(Movable)
+        .insert(Velocity { x: 0., y: 0. });
     commands
         .spawn(BallStartTimer {
             timer: Timer::new(Duration::from_secs(BALL_RESPAWN_DELAY), TimerMode::Once)
@@ -335,8 +338,9 @@ fn ball_track_player_system(
     if let Ok((ball, mut ball_transform)) = ball_query.get_single_mut() {
         let ball_translation = &mut ball_transform.translation;
         for (player, player_transform) in player_query.iter() {
+            let player_translation = player_transform.translation;
             if ball.player == player.identity {
-                ball_translation.y = player_transform.translation.y;
+                ball_translation.y = player_translation.y;
                 ball_translation.x = 0.;
             }
         }
@@ -347,12 +351,11 @@ fn ball_wall_collision_system(
     win_size: Res<WinSize>,
     mut ball_query: Query<(&Ball, &mut Transform, &mut Velocity)>,
 ) {
-    if let Ok((_, mut transform, mut velocity)) = ball_query.get_single_mut() {
-        let translation = &mut transform.translation;
-        if translation.y + BALL_SIZE / 2. > win_size.screen_top()
-            || translation.y - BALL_SIZE / 2. < win_size.screen_bottom() {
-            velocity.y = -velocity.y;
-        }
+    let (_, mut transform, mut velocity) = ball_query.single_mut();
+    let translation = &mut transform.translation;
+    if translation.y + BALL_SIZE / 2. > win_size.screen_top()
+        || translation.y - BALL_SIZE / 2. < win_size.screen_bottom() {
+        velocity.y = -velocity.y;
     }
 }
 
@@ -373,8 +376,7 @@ fn start_ball_system(
                 }
                 velocity.y = 0.;
                 commands.entity(ball_entity)
-                    .remove::<TrackingPlayer>()
-                    .insert(Movable);
+                    .remove::<TrackingPlayer>();
             }
             commands.entity(timer_entity)
                 .despawn();
@@ -388,25 +390,22 @@ fn score_system(
     mut score: ResMut<Score>,
     mut query: Query<(Entity, &Ball, &Transform)>,
 ) {
-    if let Ok((entity, _, transform)) = query.get_single_mut() {
-        let translation = transform.translation;
-        if translation.x - BALL_SIZE / 2. < win_size.screen_left() {
-            score.p2 += 1;
-            commands.entity(entity)
-                .remove::<Movable>()
-                .insert(TrackingPlayer { player: Players::P2 });
-            commands.spawn(BallStartTimer {
-                timer: Timer::new(Duration::from_secs(BALL_RESPAWN_DELAY), TimerMode::Once)
-            });
-        } else if translation.x + BALL_SIZE / 2. > win_size.screen_right() {
-            score.p1 += 1;
-            commands.entity(entity)
-                .remove::<Movable>()
-                .insert(TrackingPlayer { player: Players::P1 });
-            commands.spawn(BallStartTimer {
-                timer: Timer::new(Duration::from_secs(BALL_RESPAWN_DELAY), TimerMode::Once)
-            });
-        }
+    let (entity, _, transform) = query.single_mut();
+    let translation = transform.translation;
+    if translation.x - BALL_SIZE / 2. < win_size.screen_left() {
+        score.p2 += 1;
+        commands.entity(entity)
+            .insert(TrackingPlayer { player: Players::P2 });
+        commands.spawn(BallStartTimer {
+            timer: Timer::new(Duration::from_secs(BALL_RESPAWN_DELAY), TimerMode::Once)
+        });
+    } else if translation.x + BALL_SIZE / 2. > win_size.screen_right() {
+        score.p1 += 1;
+        commands.entity(entity)
+            .insert(TrackingPlayer { player: Players::P1 });
+        commands.spawn(BallStartTimer {
+            timer: Timer::new(Duration::from_secs(BALL_RESPAWN_DELAY), TimerMode::Once)
+        });
     }
 }
 
