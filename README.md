@@ -1,5 +1,7 @@
 # Bevy Pong Test Project
 
+This project is a demo of using the bevy game engine to make a 2D game in rust.
+
 # Build Instructions
 
 ## Install rust
