@@ -12,18 +12,18 @@ struct Velocity {
 }
 
 #[derive(PartialEq)]
-enum PlayerOption {
+enum Players {
     P1,
     P2,
 }
 
 #[derive(Component)]
 struct Player {
-    option: PlayerOption,
+    identity: Players,
 }
 
 impl Player {
-    fn size() -> Vec2 {
+    fn shape() -> Vec2 {
         Vec2::new(PADDLE_WIDTH, PADDLE_HEIGHT)
     }
 }
@@ -32,7 +32,7 @@ impl Player {
 struct Ball;
 
 impl Ball {
-    fn size() -> Vec2 {
+    fn shape() -> Vec2 {
         Vec2::new(BALL_SIZE, BALL_SIZE)
     }
 }
@@ -42,7 +42,7 @@ struct Movable;
 
 #[derive(Component)]
 struct TrackingPlayer {
-    player: PlayerOption,
+    player: Players,
 }
 
 #[derive(Component)]
@@ -52,6 +52,14 @@ struct BallStartTimer {
 
 #[derive(Component)]
 struct ScoreText;
+
+#[derive(Component)]
+struct Bounded {
+    top: Option<f32>,
+    bottom: Option<f32>,
+    left: Option<f32>,
+    right: Option<f32>,
+}
 
 // endregion: --- Components
 
@@ -76,9 +84,9 @@ const TEXT_SIZE: f32 = 60.;
 // region:    --- Resources
 
 #[derive(Resource)]
-pub struct WinSize {
-    pub w: f32,
-    pub h: f32,
+struct WinSize {
+    w: f32,
+    h: f32,
 }
 
 impl WinSize {
@@ -101,8 +109,8 @@ impl WinSize {
 
 #[derive(Resource)]
 struct Score {
-    pub p1: u32,
-    pub p2: u32,
+    p1: u32,
+    p2: u32,
 }
 
 // endregion: --- Resources
@@ -129,22 +137,13 @@ fn main() {
         }))
         .add_plugin(ShapePlugin)
         .add_startup_system(startup_system)
-        .add_system(
-            movable_system
-                .after(SysLabel::Collision)
-        )
+        .add_system(movement_system.after(SysLabel::Collision))
         .add_system(player_keyboard_event_system)
         .add_system(ball_track_player_system)
-        .add_system(
-            ball_wall_collision_system
-                .label(SysLabel::Collision)
-        )
+        .add_system(ball_wall_collision_system.label(SysLabel::Collision))
         .add_system(start_ball_system)
-        .add_system(score_system)
-        .add_system(
-            ball_player_collision_system
-                .label(SysLabel::Collision)
-        )
+        .add_system(score_system.label(SysLabel::Collision))
+        .add_system(ball_player_collision_system.label(SysLabel::Collision))
         .add_system(text_update_system)
         .run();
 }
@@ -181,37 +180,53 @@ fn startup_system(
 
     // spawn players
     let paddle_shape = shapes::Rectangle {
-        extents: Player::size(),
+        extents: Player::shape(),
         origin: RectangleOrigin::Center,
     };
 
-    let left = win_size.screen_left() + PADDLE_WIDTH / 2.;
-    let right = win_size.screen_right() - PADDLE_WIDTH / 2.;
+    let left_player_location = win_size.screen_left() + PADDLE_WIDTH / 2.;
+    let right_player_location = win_size.screen_right() - PADDLE_WIDTH / 2.;
 
     commands
         .spawn(GeometryBuilder::build_as(
             &paddle_shape,
             DrawMode::Fill(FillMode::color(Color::WHITE)),
             Transform {
-                translation: Vec3::new(left, 0., 10.),
+                translation: Vec3::new(left_player_location, 0., 10.),
                 ..Default::default()
             },
         ))
-        .insert((Player { option: PlayerOption::P1 }, Movable, Velocity { x: 0., y: 0. }));
+        .insert(Player { identity: Players::P1 })
+        .insert(Movable)
+        .insert(Velocity { x: 0., y: 0. })
+        .insert(Bounded {
+            top: Some(win_size.screen_top() - PADDLE_HEIGHT / 2.),
+            bottom: Some(win_size.screen_bottom() + PADDLE_HEIGHT / 2.),
+            left: None,
+            right: None,
+        });
     commands
         .spawn(GeometryBuilder::build_as(
             &paddle_shape,
             DrawMode::Fill(FillMode::color(Color::WHITE)),
             Transform {
-                translation: Vec3::new(right, 0., 10.),
+                translation: Vec3::new(right_player_location, 0., 10.),
                 ..Default::default()
             },
         ))
-        .insert((Player { option: PlayerOption::P2 }, Movable, Velocity { x: 0., y: 0. }));
+        .insert(Player { identity: Players::P2 })
+        .insert(Movable)
+        .insert(Velocity { x: 0., y: 0. })
+        .insert(Bounded {
+            top: Some(win_size.screen_top() - PADDLE_HEIGHT / 2.),
+            bottom: Some(win_size.screen_bottom() + PADDLE_HEIGHT / 2.),
+            left: None,
+            right: None,
+        });
 
     // spawn ball
     let ball_shape = shapes::Rectangle {
-        extents: Ball::size(),
+        extents: Ball::shape(),
         origin: RectangleOrigin::Center,
     };
 
@@ -224,7 +239,7 @@ fn startup_system(
                 ..Default::default()
             },
         ))
-        .insert((Ball, TrackingPlayer { player: PlayerOption::P1 }, Velocity { x: 0., y: 0. }));
+        .insert((Ball, TrackingPlayer { player: Players::P1 }, Velocity { x: 0., y: 0. }));
     commands
         .spawn(BallStartTimer {
             timer: Timer::new(Duration::from_secs(BALL_RESPAWN_DELAY), TimerMode::Once)
@@ -259,21 +274,27 @@ fn startup_system(
     commands.insert_resource(Score { p1: 0, p2: 0 });
 }
 
-fn movable_system(
+fn movement_system(
     win_size: Res<WinSize>,
-    mut query: Query<(&Velocity, &mut Transform, &Movable, Option<&Player>)>,
+    mut query: Query<(&Velocity, &mut Transform, &Movable, Option<&Bounded>)>,
 ) {
-    for (velocity, mut transform, _, player) in query.iter_mut() {
+    for (velocity, mut transform, _, bounded) in query.iter_mut() {
         let translation = &mut transform.translation;
         translation.x += velocity.x * TIME_STEP * BASE_SPEED;
         translation.y += velocity.y * TIME_STEP * BASE_SPEED;
 
-        // keep paddles in bounds
-        if player.is_some() {
-            if translation.y + PADDLE_HEIGHT / 2. > win_size.screen_top() {
-                translation.y = win_size.screen_top() - PADDLE_HEIGHT / 2.;
-            } else if translation.y - PADDLE_HEIGHT / 2. < win_size.screen_bottom() {
-                translation.y = win_size.screen_bottom() + PADDLE_HEIGHT / 2.;
+        if let Some(bounded) = bounded {
+            if let Some(top) = bounded.top {
+                translation.y = translation.y.min(top);
+            }
+            if let Some(bottom) = bounded.bottom {
+                translation.y = translation.y.max(bottom);
+            }
+            if let Some(left) = bounded.left {
+                translation.x = translation.x.max(left);
+            }
+            if let Some(right) = bounded.right {
+                translation.x = translation.x.min(right);
             }
         }
     }
@@ -284,8 +305,8 @@ fn player_keyboard_event_system(
     mut query: Query<(&mut Velocity, &Player)>,
 ) {
     for (mut velocity, player) in query.iter_mut() {
-        match player.option {
-            PlayerOption::P1 => {
+        match player.identity {
+            Players::P1 => {
                 velocity.y = if kb.pressed(KeyCode::S) {
                     -1.
                 } else if kb.pressed(KeyCode::W) {
@@ -294,7 +315,7 @@ fn player_keyboard_event_system(
                     0.
                 }
             }
-            PlayerOption::P2 => {
+            Players::P2 => {
                 velocity.y = if kb.pressed(KeyCode::Down) {
                     -1.
                 } else if kb.pressed(KeyCode::Up) {
@@ -314,7 +335,7 @@ fn ball_track_player_system(
     if let Ok((ball, mut ball_transform)) = ball_query.get_single_mut() {
         let ball_translation = &mut ball_transform.translation;
         for (player, player_transform) in player_query.iter() {
-            if ball.player == player.option {
+            if ball.player == player.identity {
                 ball_translation.y = player_transform.translation.y;
                 ball_translation.x = 0.;
             }
@@ -347,8 +368,8 @@ fn start_ball_system(
         if timer.timer.just_finished() {
             if let Ok((ball_entity, ball, mut velocity)) = ball_query.get_single_mut() {
                 match ball.player {
-                    PlayerOption::P1 => velocity.x = -1.,
-                    PlayerOption::P2 => velocity.x = 1.,
+                    Players::P1 => velocity.x = -1.,
+                    Players::P2 => velocity.x = 1.,
                 }
                 velocity.y = 0.;
                 commands.entity(ball_entity)
@@ -373,7 +394,7 @@ fn score_system(
             score.p2 += 1;
             commands.entity(entity)
                 .remove::<Movable>()
-                .insert(TrackingPlayer { player: PlayerOption::P2 });
+                .insert(TrackingPlayer { player: Players::P2 });
             commands.spawn(BallStartTimer {
                 timer: Timer::new(Duration::from_secs(BALL_RESPAWN_DELAY), TimerMode::Once)
             });
@@ -381,7 +402,7 @@ fn score_system(
             score.p1 += 1;
             commands.entity(entity)
                 .remove::<Movable>()
-                .insert(TrackingPlayer { player: PlayerOption::P1 });
+                .insert(TrackingPlayer { player: Players::P1 });
             commands.spawn(BallStartTimer {
                 timer: Timer::new(Duration::from_secs(BALL_RESPAWN_DELAY), TimerMode::Once)
             });
@@ -398,9 +419,9 @@ fn ball_player_collision_system(
         for (_, player_transform) in player_query.iter() {
             let collision = collide(
                 ball_transform.translation,
-                Ball::size(),
+                Ball::shape(),
                 player_transform.translation,
-                Player::size(),
+                Player::shape(),
             );
 
             if collision.is_some() {
