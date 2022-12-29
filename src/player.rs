@@ -8,7 +8,7 @@ impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
         app
             .add_startup_system(startup_system)
-            .add_system(player_keyboard_event_system.label(SysLabel::Input));
+            .add_system(player_keyboard_event_system.before(SysLabel::Collision));
     }
 }
 
